@@ -2,13 +2,8 @@
 
 **Interstellar Supply Chain Manager**
 
-[Play Demo (Link Here)] | [Report Bug]
-
 **Orbit Chain** is a **3D interstellar supply chain simulation game** that runs entirely in a single browser file.
 As the CEO of an interstellar logistics company, your mission is to build a network of mining, production, and sales to become the Universe's Logistics Emperor.
-
-![Game Screenshot](images/screenshot.png)
-*(Please replace this path with your actual screenshot image)*
 
 ## ✨ Features
 
