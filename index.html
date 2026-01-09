@@ -1,1 +1,1233 @@
-a
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Orbit Chain v11.5: Long Haul Bonus</title>
+    <style>
+        :root { 
+            --bg: #101525; 
+            --panel: rgba(15, 20, 30, 0.80); 
+            --accent: #00ffff; --accent-glow: rgba(0, 255, 255, 0.5);
+            --gold: #ffd700; --gold-glow: rgba(255, 215, 0, 0.6);
+            --text-sub: #8899aa; 
+            --loss: #ff5555; --gain: #44ff44; --warn: #ffaa00; --trait: #ffcc00;
+            --xp: #ff00ff;
+        }
+        body { margin: 0; overflow: hidden; background: var(--bg); font-family: 'Segoe UI', sans-serif; color: white; user-select: none; }
+        canvas { display: block; }
+
+        #ui-layer { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; overflow: hidden; z-index: 10; }
+        
+        .hud-panel { 
+            background: var(--panel); 
+            border: 1px solid rgba(255,255,255,0.15); border-top: 1px solid rgba(255,255,255,0.3);
+            border-left: 3px solid var(--accent); 
+            padding: 12px; pointer-events: auto; 
+            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); 
+            border-radius: 8px; 
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6); 
+            transition: 0.3s;
+        }
+
+        #detail-panel { 
+            position: absolute; top: 110px; right: 15px; width: 300px; 
+            display: flex; flex-direction: column; gap: 1px; padding: 8px 10px; z-index: 15; 
+        }
+
+        .top-bar { display: flex; justify-content: space-between; align-items: flex-start; min-width: 320px; z-index: 50; }
+        
+        .rank-box { display: flex; flex-direction: column; gap: 2px; }
+        .rank-title { font-size: 0.7rem; color: var(--text-sub); letter-spacing: 1px; text-transform: uppercase; }
+        .rank-name { font-size: 1.1rem; font-weight: bold; color: var(--xp); text-shadow: 0 0 10px rgba(255,0,255,0.4); }
+        .xp-bar-bg { width: 120px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+        .xp-bar-fill { height: 100%; background: linear-gradient(90deg, #aa00aa, #ff00ff); width: 0%; transition: width 0.5s ease-out; }
+
+        .stats-box { text-align: right; margin-right: 10px; }
+        .timer-display { font-size: 1.0rem; font-family: monospace; color: var(--text-sub); margin-bottom: 2px; }
+        .cash-display { font-size: 1.4rem; font-weight: bold; font-family: monospace; letter-spacing: -1px; }
+        .cash-pos { color: #ffd700; text-shadow: 0 0 10px rgba(255, 215, 0, 0.3); } .cash-neg { color: var(--loss); }
+        .profit-rate { font-size: 0.8rem; font-family: monospace; display: block; }
+        .rate-pos { color: var(--gain); } .rate-neg { color: var(--loss); }
+        
+        #mission-panel { 
+            position: absolute; top: 130px; left: 50%; transform: translateX(-50%); 
+            width: 300px; text-align: center; border-left: none; border-bottom: 3px solid var(--warn);
+            z-index: 10;
+        }
+        .mission-label { font-size: 0.7rem; color: var(--warn); font-weight: bold; letter-spacing: 2px; }
+        .mission-text { font-size: 0.95rem; margin: 4px 0; font-weight: bold; }
+        .mission-progress { font-family: monospace; color: #ccc; font-size: 0.9rem; }
+        .mission-complete { animation: flash 0.5s ease-in-out 4 alternate; color: var(--gain); }
+        @keyframes flash { from { background: var(--panel); } to { background: rgba(68, 255, 68, 0.4); } }
+
+        .header-btns { display: flex; gap: 5px; }
+        .icon-btn {
+            background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.3);
+            color: white; width: 32px; height: 32px; border-radius: 4px;
+            cursor: pointer; pointer-events: auto; display: flex; align-items: center; justify-content: center;
+            transition: 0.2s; font-size: 1rem;
+        }
+        @media (hover: hover) { .icon-btn:hover { background: rgba(0, 255, 255, 0.2); border-color: var(--accent); } }
+        .icon-btn:active { background: var(--accent); color: black; }
+        .icon-btn.active { background: var(--accent); color: black; box-shadow: 0 0 10px var(--accent-glow); border-color: var(--accent); }
+        .icon-btn.paused { background: rgba(255, 170, 0, 0.2); border-color: var(--warn); color: var(--warn); animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+
+        .hud-hidden { transform: translateX(150%); opacity: 0; pointer-events: none; }
+
+        #control-panel-container { align-self: flex-start; min-width: 280px; z-index: 15; }
+
+        .p-header { font-weight: bold; padding-bottom: 3px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; margin-bottom: 2px; }
+        .data-row { display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-sub); line-height: 1.2; margin-top: 2px; }
+        .data-val { color: white; font-weight: bold; font-family: monospace; }
+        .trait-badge { background: var(--trait); color: black; padding: 1px 5px; border-radius: 4px; font-size: 0.65rem; font-weight: bold; }
+        .incoming-val { color: var(--warn); font-size: 0.75rem; } 
+        
+        .floating-text { position: absolute; font-weight: bold; font-size: 14px; pointer-events: none; animation: floatUp 3.0s ease-out forwards; text-shadow: 0 2px 4px black; font-family: monospace; z-index: 100; white-space: pre; }
+        .float-gain { color: var(--gain); } .float-loss { color: var(--loss); } .float-xp { color: var(--xp); font-size: 14px; }
+        @keyframes floatUp { 0% { opacity: 0; transform: translateY(0); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-40px); } }
+
+        .ship-selector { display: flex; gap: 5px; margin-bottom: 5px; }
+        .ship-btn { flex: 1; font-size: 0.7rem; display: flex; flex-direction: column; align-items: center; padding: 8px 4px; opacity: 0.8; border: 1px solid #444; background: rgba(0,0,0,0.3); color: white; cursor: pointer; border-radius: 4px; transition: 0.2s; }
+        .ship-btn:hover { background: rgba(255,255,255,0.1); }
+        .ship-btn.active { opacity: 1; background: rgba(0, 255, 255, 0.15); border-color: var(--accent); color: var(--accent); box-shadow: 0 0 10px rgba(0,255,255,0.2); }
+        .ship-btn.disabled { opacity: 0.4; cursor: not-allowed; border-color: #552222; color: #888; }
+        
+        .ship-stats { font-size: 0.65rem; color: #ccc; margin-top: 4px; line-height: 1.4; text-align: center; width: 100%; }
+        .stat-line { display:flex; justify-content: space-between; width:100%; }
+        .ship-cost-label { font-size: 0.85rem; font-weight: bold; margin-top: 4px; font-family: monospace; }
+        .cost-ok { color: var(--gain); } .cost-ng { color: var(--loss); }
+        .val-bad { color: var(--loss); } .val-good { color: var(--gain); }
+
+        .ctrl-row { display: flex; gap: 6px; align-items: center; margin-top: 2px; margin-bottom: 4px; background: rgba(0,0,0,0.3); padding: 3px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.05); }
+        .ctrl-info { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+        .ctrl-top { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .ctrl-label { font-size: 0.65rem; font-weight: bold; color: #ccc; }
+        .ctrl-cost { font-size: 0.75rem; color: white; font-family: monospace; font-weight: bold; }
+        .ctrl-sub { font-size: 0.6rem; color: var(--loss); font-family: monospace; margin-top: -1px; display: block; text-align: right; }
+
+        .ctrl-btn { width: 24px; height: 24px; border: 1px solid #555; background: #222; color: white; font-weight: bold; font-size: 1.0rem; cursor: pointer; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+        .ctrl-btn:hover:not(:disabled) { background: #444; border-color: white; }
+        .ctrl-btn:disabled { opacity: 0.3; cursor: not-allowed; border-color: #333; }
+        .ctrl-btn.up { border-color: rgba(0,255,255,0.3); color: var(--accent); }
+        .ctrl-btn.up:hover:not(:disabled) { background: rgba(0,255,255,0.1); box-shadow: 0 0 10px rgba(0,255,255,0.2); }
+        .ctrl-btn.down { border-color: rgba(255,85,85,0.3); color: var(--loss); }
+        .ctrl-btn.down:hover:not(:disabled) { background: rgba(255,85,85,0.1); }
+
+        .action-btn { background: linear-gradient(180deg, rgba(40,50,60,0.9), rgba(20,30,40,0.9)); border: 1px solid rgba(255,255,255,0.2); color: white; padding: 6px 10px; cursor: pointer; border-radius: 4px; transition: 0.2s; width: 100%; margin-top: 4px; display: flex; justify-content: center; align-items: center; }
+        .action-btn:hover { background: rgba(0, 255, 255, 0.15); border-color: var(--accent); }
+        .btn-label { font-size: 0.75rem; font-weight: bold; text-transform: uppercase; color: var(--accent); }
+
+        hr { border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 3px 0; }
+
+        /* OVERLAYS: z-index must be higher than UI-layer */
+        .overlay-screen { position: absolute; inset: 0; background: rgba(16, 21, 37, 0.95); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; pointer-events: auto; text-align: center; }
+        #game-over h2 { color: var(--loss); font-size: 3rem; margin: 0; text-shadow: 0 0 20px red; }
+        #game-clear h2 { color: var(--gold); font-size: 3.5rem; margin: 0; text-shadow: 0 0 30px var(--gold-glow); letter-spacing: 5px; }
+        #game-clear p { color: #ffd700; font-size: 1.2rem; letter-spacing: 2px; margin-top: 10px; }
+
+        /* Title Screen */
+        #title-screen { display: flex; background: rgba(16, 21, 37, 0.85); backdrop-filter: blur(5px); }
+        .title-main { font-size: 4rem; color: var(--accent); text-shadow: 0 0 20px var(--accent-glow); letter-spacing: 10px; margin: 0; }
+        .title-sub { font-size: 1.2rem; color: var(--text-sub); letter-spacing: 4px; margin-bottom: 40px; }
+        .start-btn { 
+            padding: 15px 50px; font-size: 1.5rem; background: transparent; 
+            border: 2px solid var(--accent); color: var(--accent); cursor: pointer; 
+            letter-spacing: 2px; transition: 0.3s; font-weight: bold; border-radius: 4px;
+            box-shadow: 0 0 15px var(--accent-glow);
+        }
+        .start-btn:hover { background: var(--accent); color: black; box-shadow: 0 0 30px var(--accent-glow); }
+
+        @media (max-width: 600px) {
+            .title-main { font-size: 2.5rem; letter-spacing: 5px; }
+            .title-sub { font-size: 0.9rem; letter-spacing: 2px; }
+            #game-clear h2 { font-size: 2.0rem; letter-spacing: 2px; }
+            #game-clear p { font-size: 0.9rem; letter-spacing: 1px; }
+            #game-over h2 { font-size: 2.5rem; }
+            .score-row { font-size: 1.1rem; }
+        }
+        
+        .score-row { display: flex; gap: 20px; font-size: 1.5rem; margin-top: 20px; font-family: monospace; }
+        .score-label { color: #888; }
+        .score-val { color: white; font-weight: bold; }
+        
+        .restart-btn { width: 220px; padding: 15px; font-size: 1.1rem; border: 2px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; margin-top: 30px; letter-spacing: 2px; font-weight: bold; transition: 0.3s; }
+        .restart-btn:hover { background: var(--accent); color: black; box-shadow: 0 0 30px var(--accent); }
+        
+        .mini-log { font-size: 0.7rem; color: var(--text-sub); margin-top: 5px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .legend { position: absolute; bottom: 15px; left: 15px; pointer-events: none; font-size: 0.7rem; color: #aaa; text-align: left; background: rgba(0,0,0,0.5); padding: 5px; border-radius: 4px; }
+        .legend span { display: inline-block; width: 8px; height: 8px; margin-right: 4px; }
+    </style>
+    <script type="importmap">
+        { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
+    </script>
+</head>
+<body>
+    <canvas id="game-canvas"></canvas>
+
+    <div id="title-screen" class="overlay-screen">
+        <h1 class="title-main">ORBIT CHAIN</h1>
+        <p class="title-sub">INTERSTELLAR SUPPLY MANAGER</p>
+        <button id="btn-start-game" class="start-btn">INITIALIZE</button>
+    </div>
+
+    <div id="game-over" class="overlay-screen">
+        <h2>BANKRUPT</h2>
+        <p style="color:#ccc;">Your CEO days are over.</p>
+        <p id="fail-time" style="color:var(--accent); font-size:1.2rem; font-weight:bold; margin-top:10px;">SURVIVED: 00:00</p>
+        <button class="restart-btn" onclick="location.reload()">TRY AGAIN</button>
+    </div>
+
+    <div id="game-clear" class="overlay-screen">
+        <h2>CONGRATULATIONS</h2>
+        <p>SUPPLY CHAIN EMPEROR</p>
+        <div class="score-row">
+            <div class="score-label">TIME:</div>
+            <div id="clear-time" class="score-val">00:00</div>
+        </div>
+        <div class="score-row">
+            <div class="score-label">SPEED BONUS:</div>
+            <div id="clear-bonus" class="score-val" style="color:var(--accent);">+0</div>
+        </div>
+        <div class="score-row">
+            <div class="score-label">TOTAL CASH:</div>
+            <div id="clear-cash" class="score-val" style="color:var(--gain);">0</div>
+        </div>
+        <button class="restart-btn" onclick="location.reload()" style="border-color:var(--gold); color:var(--gold);">NEW GAME</button>
+    </div>
+
+    <div id="ui-layer">
+        <div id="mission-panel" class="hud-panel collapsible-ui hud-hidden">
+            <div class="mission-label">CURRENT CONTRACT</div>
+            <div id="mission-desc" class="mission-text">Loading...</div>
+            <div class="mission-progress"><span id="mission-curr">0</span> / <span id="mission-tgt">0</span></div>
+        </div>
+
+        <div class="hud-panel top-bar">
+            <div class="rank-box">
+                <div class="rank-title">CORPORATE RANK</div>
+                <div id="ui-rank" class="rank-name">INTERN</div>
+                <div class="xp-bar-bg"><div id="ui-xp" class="xp-bar-fill"></div></div>
+            </div>
+            <div style="display:flex; align-items:center;">
+                <div class="stats-box">
+                    <div id="ui-timer" class="timer-display">00:00</div>
+                    <div id="ui-cash" class="cash-display cash-pos">5,000</div>
+                    <div id="ui-profit" class="profit-rate rate-pos">+0 /s</div>
+                </div>
+                <div class="header-btns">
+                    <button id="btn-speed" class="icon-btn paused" title="Speed">⏸️</button>
+                    <button id="btn-toggle-ui" class="icon-btn active" title="Toggle UI">👁️</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="detail-panel" class="hud-panel collapsible-ui hud-hidden">
+            <div class="p-header">
+                <span id="p-type" style="color:white;">PLANET</span>
+                <span id="p-trait" class="trait-badge" style="display:none;">TRAIT</span>
+                <span class="p-close" onclick="deselect()">×</span>
+            </div>
+            
+            <div class="data-row">
+                <span>Capacity</span> 
+                <span class="data-val">
+                    <span id="p-stock">0</span>
+                    <span id="p-incoming" class="incoming-val" style="color:#ffaa00;">(+0)</span> / <span id="p-max">0</span>
+                </span>
+            </div>
+            <div class="ctrl-row">
+                <button id="btn-down-cap" class="ctrl-btn down" onclick="ctrlAction('down','cap')">-</button>
+                <div class="ctrl-info">
+                    <div class="ctrl-top">
+                        <span class="ctrl-label">CAP LVL <span id="p-cap-lvl" style="color:white;">1</span></span>
+                        <span id="cost-cap" class="ctrl-cost">300cr</span>
+                    </div>
+                    <span class="ctrl-sub" id="preview-cap-upkeep">OpEx: +0.0/s</span>
+                </div>
+                <button id="btn-up-cap" class="ctrl-btn up" onclick="ctrlAction('up','cap')">+</button>
+            </div>
+
+            <hr>
+
+            <div class="data-row"><span>Flow Speed</span> <span class="data-val"><span id="p-rate">0</span> /s</span></div>
+            <div class="ctrl-row">
+                <button id="btn-down-prod" class="ctrl-btn down" onclick="ctrlAction('down','prod')">-</button>
+                <div class="ctrl-info">
+                    <div class="ctrl-top">
+                        <span class="ctrl-label">FLOW LVL <span id="p-prod-lvl" style="color:white;">1</span></span>
+                        <span id="cost-prod" class="ctrl-cost">500cr</span>
+                    </div>
+                    <span class="ctrl-sub" id="preview-prod-upkeep">OpEx: +0.0/s</span>
+                </div>
+                <button id="btn-up-prod" class="ctrl-btn up" onclick="ctrlAction('up','prod')">+</button>
+            </div>
+
+            <hr>
+
+            <div class="data-row" style="font-size:0.7rem; color:#888;">
+                Desc: <span id="p-desc" style="color:white;">-</span>
+            </div>
+            <div style="font-size:0.65rem; color:#888; text-align:right; margin-top:2px;">
+                Total Upkeep: <span id="p-upkeep-val" style="color:var(--loss)">-0.0/s</span>
+            </div>
+        </div>
+
+        <div id="control-panel-container" class="hud-panel collapsible-ui hud-hidden">
+            <div style="margin-bottom:5px; font-size:0.75rem; color:#ccc;">FLEET COMMAND</div>
+            <div class="ship-selector">
+                <button class="ship-btn active" id="sel-scout" onclick="setShipType('scout')">
+                    SCOUT
+                    <div class="ship-stats">
+                        <div class="stat-line"><span>Cap:</span><span>5</span></div>
+                        <div class="stat-line"><span>Upkeep:</span><span id="upkeep-scout" class="val-bad">-2.0/s</span></div>
+                        <div class="stat-line"><span style="font-size:0.6rem; color:#ffaa00;">Tax Burden: ~40%</span></div>
+                    </div>
+                    <div id="cost-scout" class="ship-cost-label">500cr</div>
+                </button>
+                <button class="ship-btn" id="sel-hauler" onclick="setShipType('hauler')">
+                    HAULER
+                    <div class="ship-stats">
+                        <div class="stat-line"><span>Cap:</span><span>30</span></div>
+                        <div class="stat-line"><span>Upkeep:</span><span id="upkeep-hauler" class="val-bad">-4.0/s</span></div>
+                        <div class="stat-line"><span style="font-size:0.6rem; color:#44ff44;">Tax Burden: ~7%</span></div>
+                    </div>
+                    <div id="cost-hauler" class="ship-cost-label">800cr</div>
+                </button>
+            </div>
+            <button id="btn-buy-ship" class="action-btn" style="justify-content:center;">
+                <span class="btn-label" style="color:var(--accent);">DEPLOY SHIP</span>
+            </button>
+            <button id="btn-sell-ship" class="action-btn btn-danger" style="justify-content:center; border-color:var(--loss);">
+                <span class="btn-label" style="color:var(--loss);">SCRAP (Recover $)</span>
+            </button>
+            
+            <div style="margin-top:8px; display:flex; justify-content:space-between; font-size:0.8rem;">
+                <span id="ui-ships-text">Fleet: <span id="ui-ships" style="font-weight:bold;">0</span></span>
+                <span style="color:var(--loss);">Total Upkeep: -<span id="ui-upkeep">0</span>/s</span>
+            </div>
+            <div class="mini-log" id="log-display">System ready.</div>
+        </div>
+        
+        <div class="legend collapsible-ui hud-hidden">
+            <div style="display:flex; gap:10px;">
+                <div><span style="background:white;"></span>Stock</div>
+                <div><span style="background:#ffaa00;"></span>Incoming</div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:2px;">
+                <div><span style="background:#00ffff;"></span>Loaded</div>
+                <div><span style="background:#666;"></span>Empty</div>
+            </div>
+            <hr style="border:0; border-top:1px solid #444; margin:4px 0;">
+            <div style="color:#aaa;">
+                Docking Tax: <span style="color:var(--loss)">60cr</span> / trip<br>
+                Corp Tax Rate: <span id="tax-rate" style="color:var(--loss)">+0%</span> (Rank Based)
+            </div>
+        </div>
+    </div>
+
+    <script id="worker-code" type="javascript/worker">
+        let planets = [], ships = [], cash = 5000, lastTime = 0;
+        let isGameOver = false;
+        let selectedShipType = 'scout';
+        let gameTime = 0; 
+        let timeScale = 0.0; // START PAUSED
+        
+        let xp = 0;
+        let rank = 1;
+        let xpToNext = 500;
+        const RANK_TITLES = ["Intern", "Supervisor", "Manager", "Director", "VP", "CEO", "Tycoon", "Magnate", "Emperor"];
+        
+        let currentMission = null;
+
+        const DUMPING_FEE = 20;
+        const DOCKING_FEE = 60; 
+        const UPGRADE_UPKEEP = 2;
+        const BASE_PRICE = { 'ore': 150, 'goods': 400 };
+
+        const SHIP_SPECS = {
+            'scout': { basePrice: 500, cap: 5, speed: 1.2, upkeep: 2 },
+            'hauler': { basePrice: 800, cap: 30, speed: 0.6, upkeep: 4 }
+        };
+        
+        let shipCounts = { 'scout': 0, 'hauler': 0 };
+
+        const TRAITS = [
+            { id: 'NORMAL', name: 'Terran', rateMod: 1.0, capMod: 1.0, color: 0x88ff88, desc: "Standard" },
+            { id: 'VOLCANIC', name: 'Volcanic', rateMod: 2.0, capMod: 0.6, color: 0xff5500, desc: "High Yield / Exp. Upgrade" },
+            { id: 'GAS', name: 'Gas Giant', rateMod: 0.8, capMod: 2.5, color: 0xaa88ff, desc: "Huge Cap" },
+            { id: 'BARREN', name: 'Barren', rateMod: 0.5, capMod: 0.8, color: 0x888888, desc: "Low Yield" },
+            { id: 'OCEAN', name: 'Oceanic', rateMod: 1.2, capMod: 1.2, color: 0x00aaff, desc: "Balanced" }
+        ];
+
+        self.onmessage = function(e) {
+            const { type, data } = e.data;
+
+            if (type === 'INIT') {
+                planets = data.planets.map(p => {
+                    const trait = TRAITS[Math.floor(Math.random() * TRAITS.length)];
+                    const maxStk = Math.floor(50 * trait.capMod);
+                    return {
+                        ...p, 
+                        stock: p.type === 0 ? maxStk : 0, 
+                        incoming: 0, 
+                        maxStock: maxStk, 
+                        prodRate: 0.8 * trait.rateMod, 
+                        prodLvl: 1, capLvl: 1, 
+                        trait: trait
+                    };
+                });
+                lastTime = performance.now();
+                generateMission();
+            }
+
+            if (type === 'SET_SHIP_TYPE') selectedShipType = data;
+            if (type === 'SET_SPEED') timeScale = data;
+            if (isGameOver) return; 
+
+            if (type === 'BUY_SHIP') {
+                const spec = SHIP_SPECS[selectedShipType];
+                const count = shipCounts[selectedShipType];
+                const currentPrice = Math.floor(spec.basePrice * Math.pow(1.2, count));
+
+                if (cash >= currentPrice) {
+                    cash -= currentPrice;
+                    shipCounts[selectedShipType]++;
+                    
+                    const spawnId = findSmartSpawn();
+                    ships.push({ 
+                        id: Math.random().toString(36).substr(2), type: selectedShipType,
+                        curr: spawnId, dest: null, progress: 0, cargo: 0, ctype: null, status: 'IDLE' 
+                    });
+                    msg(`${selectedShipType.toUpperCase()} deployed.`);
+                } else msg(`Insufficient funds: ${currentPrice}cr needed.`);
+            }
+
+            if (type === 'SELL_SHIP') {
+                const shipToSell = ships.slice().reverse().find(s => s.type === selectedShipType);
+                if (shipToSell) {
+                    const idx = ships.indexOf(shipToSell);
+                    ships.splice(idx, 1);
+                    shipCounts[selectedShipType] = Math.max(0, shipCounts[selectedShipType] - 1);
+                    if (shipToSell.dest !== null && shipToSell.cargo > 0) {
+                        planets[shipToSell.dest].incoming = Math.max(0, planets[shipToSell.dest].incoming - shipToSell.cargo);
+                    }
+                    cash += 250; 
+                    msg("Ship scrapped. Cash recovered.");
+                } else msg(`No ${selectedShipType}s to scrap.`);
+            }
+
+            if (type === 'UPGRADE') {
+                const p = planets[data.id];
+                const kind = data.kind; 
+                
+                if (data.action === 'up') {
+                    const currentLvl = kind === 'prod' ? p.prodLvl : p.capLvl;
+                    const cost = kind === 'prod' 
+                        ? Math.floor(500 * Math.pow(1.3, currentLvl - 1))
+                        : Math.floor(300 * Math.pow(1.3, currentLvl - 1));
+
+                    if (cash >= cost) { 
+                        cash -= cost; 
+                        if (kind === 'prod') {
+                            p.prodLvl++;
+                            p.prodRate += (0.4 * p.trait.rateMod); 
+                        } else {
+                            p.capLvl++;
+                            p.maxStock += Math.floor(20 * p.trait.capMod); 
+                        }
+                        msg(`${kind.toUpperCase()} upgraded.`); 
+                    } else {
+                        msg(`Need ${cost}cr for upgrade.`);
+                    }
+                } else {
+                    if (kind === 'prod' && p.prodLvl > 1) {
+                        p.prodLvl--;
+                        p.prodRate -= (0.4 * p.trait.rateMod);
+                        msg("Production downgraded. Upkeep reduced.");
+                    } else if (kind === 'cap' && p.capLvl > 1) {
+                        p.capLvl--;
+                        p.maxStock -= Math.floor(20 * p.trait.capMod);
+                        if (p.stock > p.maxStock) p.stock = p.maxStock;
+                        msg("Storage downgraded. Upkeep reduced.");
+                    }
+                }
+            }
+
+            if (type === 'TICK') {
+                const now = performance.now();
+                const realDt = (now - lastTime) / 1000;
+                const dt = Math.min(realDt, 0.2) * timeScale;
+                lastTime = now;
+                
+                if (timeScale > 0) gameTime += dt;
+                
+                const events = [];
+
+                const rankSpeedBuff = 1.0 + (rank - 1) * 0.05; 
+                const rankPriceBuff = 1.0 + (rank - 1) * 0.02;
+                const rankTaxMod = 1.0 + ((rank - 1) * 0.15);
+
+                let totalUpkeep = 0;
+                ships.forEach(s => totalUpkeep += SHIP_SPECS[s.type].upkeep);
+                
+                planets.forEach(p => {
+                    const extraLevels = (p.prodLvl - 1) + (p.capLvl - 1);
+                    totalUpkeep += (extraLevels * UPGRADE_UPKEEP);
+                });
+                
+                totalUpkeep *= rankTaxMod;
+                
+                if (timeScale > 0) cash -= totalUpkeep * dt;
+
+                if (cash < 0) { isGameOver = true; self.postMessage({ type: 'GAME_OVER', time: gameTime }); return; }
+
+                if (timeScale > 0) {
+                    planets.forEach(p => {
+                        if (p.type === 0 && p.stock < p.maxStock) p.stock += p.prodRate * dt; 
+                        else if (p.type === 1 && p.stock < p.maxStock) p.stock += p.prodRate * dt * 0.5;
+                        else if (p.type === 2 && p.stock > 0) {
+                            const c = p.prodRate * dt; p.stock = Math.max(0, p.stock - c); 
+                            cash += c * 5 * rankPriceBuff;
+                        }
+                    });
+
+                    ships.forEach(s => {
+                        const spec = SHIP_SPECS[s.type];
+                        const currentSpeed = spec.speed * rankSpeedBuff;
+
+                        if (s.dest === null) {
+                            const p = planets[s.curr];
+                            if (s.cargo === 0) {
+                                if ((p.type === 0 || p.type === 1) && p.stock >= 1) {
+                                    const take = Math.min(p.stock, spec.cap);
+                                    if (take >= 1) { 
+                                        p.stock -= take; s.cargo = take; s.ctype = p.type === 0 ? 'ore' : 'goods';
+                                    }
+                                }
+                            }
+                            
+                            if (s.cargo > 0) {
+                                s.status = 'DELIVERING';
+                                const target = findDeliveryTarget(s.curr, s.ctype === 'ore' ? 1 : 2, s.cargo);
+                                
+                                if (target !== -1) { 
+                                    s.dest = target; 
+                                    planets[target].incoming += s.cargo; 
+                                } else {
+                                    if (s.cargo < spec.cap) {
+                                        s.cargo = 0; s.ctype = null; 
+                                    } else {
+                                        s.status = 'WAITING'; 
+                                    }
+                                }
+                            } else {
+                                const target = findBestPickup(s.curr, spec.cap);
+                                if (target !== -1) {
+                                    if (target === s.curr) {
+                                        s.status = 'WAITING'; 
+                                    } else {
+                                        s.status = 'RETURNING';
+                                        s.dest = target;
+                                    }
+                                } else {
+                                    s.status = 'IDLE';
+                                }
+                            }
+                            if (s.dest !== null) s.progress = 0;
+                        } else {
+                            const start = planets[s.curr], end = planets[s.dest];
+                            s.progress += (currentSpeed * dt) / (Math.sqrt((end.x-start.x)**2 + (end.y-start.y)**2 + (end.z-start.z)**2) || 1);
+
+                            if (s.progress >= 1) {
+                                if (s.cargo > 0) planets[s.dest].incoming = Math.max(0, planets[s.dest].incoming - s.cargo);
+                                s.curr = s.dest; s.dest = null; s.progress = 0;
+                                
+                                if (s.cargo > 0) {
+                                    const p = planets[s.curr];
+                                    const isCorrectDest = (s.ctype === 'ore' && p.type === 1) || (s.ctype === 'goods' && p.type === 2);
+                                    
+                                    if (isCorrectDest) {
+                                        if (p.stock < p.maxStock) {
+                                            p.stock = Math.min(p.stock + s.cargo, p.maxStock);
+                                            const stockRatio = p.stock / p.maxStock;
+                                            const priceMult = (1.5 - (stockRatio * 0.7)) * rankPriceBuff;
+                                            const base = BASE_PRICE[s.ctype];
+                                            const grossRevenue = Math.floor(base * priceMult * (s.cargo / 5));
+                                            
+                                            const finalProfit = grossRevenue - DOCKING_FEE;
+                                            cash += finalProfit; 
+                                            
+                                            if (currentMission) {
+                                                currentMission.progress += s.cargo;
+                                                if (currentMission.progress >= currentMission.target) {
+                                                    completeMission();
+                                                }
+                                            }
+                                            addXP(10);
+
+                                            if (finalProfit > 0) {
+                                                events.push({ type: 'earn', amt: finalProfit, pid: s.curr });
+                                                events.push({ type: 'ripple', pid: s.curr, color: s.ctype === 'ore' ? 0xff5555 : 0x4488ff });
+                                            } else {
+                                                events.push({ type: 'loss', amt: Math.abs(finalProfit), pid: s.curr });
+                                            }
+                                        } else {
+                                            cash -= DUMPING_FEE; 
+                                            events.push({ type: 'loss', amt: DUMPING_FEE, pid: s.curr });
+                                        }
+                                        s.cargo = 0; s.status = 'IDLE';
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } 
+
+                const frameRevenue = events.reduce((sum, e) => sum + (e.type==='earn'?e.amt:(e.type==='loss'?-e.amt:0)), 0);
+                const netRate = (dt > 0) ? ((frameRevenue / dt) - totalUpkeep) : -totalUpkeep;
+                
+                const nextPrices = {
+                    scout: Math.floor(SHIP_SPECS['scout'].basePrice * Math.pow(1.2, shipCounts['scout'])),
+                    hauler: Math.floor(SHIP_SPECS['hauler'].basePrice * Math.pow(1.2, shipCounts['hauler']))
+                };
+
+                const currentScoutUpkeep = (SHIP_SPECS['scout'].upkeep * rankTaxMod).toFixed(1);
+                const currentHaulerUpkeep = (SHIP_SPECS['hauler'].upkeep * rankTaxMod).toFixed(1);
+
+                const activeScouts = ships.filter(s => s.type === 'scout').length;
+                const activeHaulers = ships.filter(s => s.type === 'hauler').length;
+
+                self.postMessage({ 
+                    type: 'UPDATE', 
+                    state: { 
+                        planets: planets.map(p => ({ 
+                            id: p.id, stock: p.stock, incoming: p.incoming, max: p.maxStock, 
+                            rate: p.prodRate, lvl: p.level, status: p.stock/p.max>0.9?"Overstock":"Normal", trait: p.trait,
+                            prodLvl: p.prodLvl, capLvl: p.capLvl,
+                            nextProd: Math.floor(500 * Math.pow(1.3, p.prodLvl - 1)),
+                            nextCap: Math.floor(300 * Math.pow(1.3, p.capLvl - 1)),
+                            planetUpkeep: ((p.prodLvl-1)+(p.capLvl-1)) * UPGRADE_UPKEEP * rankTaxMod 
+                        })), 
+                        ships, cash: Math.floor(cash), events,
+                        upkeep: Math.floor(totalUpkeep), 
+                        net: Math.floor(netRate),
+                        mission: currentMission,
+                        rankData: { rank, title: RANK_TITLES[Math.min(rank-1, RANK_TITLES.length-1)], xp, xpToNext },
+                        prices: nextPrices,
+                        taxInfo: { 
+                            rate: Math.round((rankTaxMod - 1) * 100),
+                            scoutUpkeep: currentScoutUpkeep,
+                            haulerUpkeep: currentHaulerUpkeep,
+                            upgradeUpkeep: (UPGRADE_UPKEEP * rankTaxMod).toFixed(1)
+                        },
+                        counts: { scout: activeScouts, hauler: activeHaulers },
+                        time: gameTime
+                    } 
+                });
+            }
+        };
+
+        function generateMission() {
+            const target = Math.floor(30 + (rank * 15)); 
+            const reward = Math.floor(target * 40); 
+            currentMission = {
+                desc: `Deliver ${target} Cargo Units`,
+                target: target, progress: 0, reward: reward
+            };
+        }
+        function completeMission() {
+            cash += currentMission.reward;
+            addXP(100 + (rank * 20));
+            msg(`MISSION COMPLETE! +${currentMission.reward}cr`);
+            generateMission(); 
+        }
+        function addXP(amount) {
+            xp += amount;
+            if (xp >= xpToNext) {
+                // Check if Emperor (Index 8) is Maxed
+                if (rank >= RANK_TITLES.length) {
+                    isGameOver = true;
+                    // TIME BONUS: 10cr for every second under 60min (3600s)
+                    const timeBonus = Math.max(0, Math.floor((3600 - gameTime) * 10));
+                    const finalCash = Math.floor(cash) + timeBonus;
+                    self.postMessage({ type: 'GAME_CLEAR', time: gameTime, cash: finalCash, bonus: timeBonus });
+                    return;
+                }
+                xp -= xpToNext; rank++; xpToNext = Math.floor(xpToNext * 1.5);
+                msg(`PROMOTED! Rank ${rank}: ${RANK_TITLES[Math.min(rank-1, RANK_TITLES.length-1)]}`);
+            }
+        }
+        
+        function findSmartSpawn() {
+            const candidates = planets.filter(p => p.type !== 2 && p.stock >= 1);
+            if (candidates.length === 0) return 0;
+            candidates.sort((a, b) => {
+                const valA = a.stock * (a.type === 1 ? 400 : 150);
+                const valB = b.stock * (b.type === 1 ? 400 : 150);
+                return valB - valA; 
+            });
+            return candidates[0].id;
+        }
+
+        function findDeliveryTarget(currIdx, targetType, cargoAmount) {
+            const start = planets[currIdx]; const candidates = [];
+            planets.forEach((p, i) => {
+                if (p.type === targetType && i !== currIdx) {
+                    const dist = Math.sqrt((p.x-start.x)**2 + (p.y-start.y)**2 + (p.z-start.z)**2);
+                    const effectiveStock = p.stock + p.incoming;
+                    if (effectiveStock + cargoAmount > p.maxStock) return; 
+                    const score = dist + (effectiveStock/p.maxStock * 1500); 
+                    candidates.push({ id: i, score });
+                }
+            });
+            candidates.sort((a, b) => a.score - b.score);
+            return candidates.length ? candidates[0].id : -1;
+        }
+
+        function findBestPickup(currIdx, shipCap) {
+            const start = planets[currIdx];
+            let bestId = -1;
+            let bestScore = -Infinity;
+
+            let totalFactoryOre = 0, maxFactoryOre = 0;
+            let totalMarketGoods = 0, maxMarketGoods = 0;
+            let factoryStarving = false;
+
+            planets.forEach(p => {
+                if (p.type === 1) { 
+                    totalFactoryOre += p.stock; maxFactoryOre += p.maxStock; 
+                    if (p.stock < 5) factoryStarving = true; 
+                }
+                if (p.type === 2) { totalMarketGoods += p.stock; maxMarketGoods += p.maxStock; }
+            });
+            const factoryOreFull = maxFactoryOre > 0 ? (totalFactoryOre / maxFactoryOre) > 0.8 : false;
+            const marketGoodsFull = maxMarketGoods > 0 ? (totalMarketGoods / maxMarketGoods) > 0.8 : false;
+
+            planets.forEach((p, i) => {
+                if (p.type === 2) return; 
+                
+                const dist = Math.sqrt((p.x-start.x)**2 + (p.y-start.y)**2 + (p.z-start.z)**2);
+                const fillRatio = Math.min(p.stock, shipCap) / shipCap; 
+                
+                let score = (fillRatio * 10000) - dist;
+
+                if (p.type === 0 && factoryStarving) {
+                    score += 100000; 
+                }
+
+                if (p.type === 0 && factoryOreFull) score -= 5000; 
+                if (p.type === 1 && marketGoodsFull) score -= 8000; 
+
+                if (i === currIdx) {
+                    if (fillRatio >= 0.5) score += 2000; 
+                    else score -= 99999; 
+                }
+                
+                score += (Math.random() * 200);
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestId = i;
+                }
+            });
+            return bestId;
+        }
+        
+        function findPickupTarget(currIdx, targetType) {
+            return findBestPickup(currIdx, 5); 
+        }
+
+        function msg(t) { self.postMessage({ type: 'LOG', text: t }); }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        window.formatTime = function(s) {
+            const m = Math.floor(s / 60);
+            const sec = Math.floor(s % 60);
+            return `${m.toString().padStart(2,'0')}:${sec.toString().padStart(2,'0')}`;
+        };
+
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        const scene = new THREE.Scene(); scene.background = new THREE.Color(0x101525); scene.fog = new THREE.FogExp2(0x101525, 0.008);
+        const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 3000);
+        
+        camera.position.set(65, 5, 65);
+        
+        const controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.autoRotate = true; controls.autoRotateSpeed = 0.2; controls.maxDistance = 150;
+
+        scene.add(new THREE.AmbientLight(0x404040, 1.5)); 
+        const sunLight = new THREE.DirectionalLight(0xffffff, 3.0);
+        sunLight.position.set(100, 50, 100);
+        scene.add(sunLight);
+        const fillLight = new THREE.PointLight(0xaaaaaa, 1.0, 200);
+        fillLight.position.set(-50, 0, -50);
+        scene.add(fillLight);
+
+        const planetGroup = new THREE.Group(), shipGroup = new THREE.Group(), particleGroup = new THREE.Group();
+        const lineGroup = new THREE.Group();
+        scene.add(lineGroup);
+        scene.add(planetGroup); scene.add(shipGroup); scene.add(particleGroup);
+
+        const selectionMesh = new THREE.Mesh(new THREE.RingGeometry(2.5, 2.7, 32), new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.8, side: THREE.DoubleSide }));
+        selectionMesh.rotation.x = Math.PI/2; selectionMesh.visible = false; scene.add(selectionMesh);
+
+        const TYPES = [ {name:'MINER', col:0xff5555}, {name:'FACTORY', col:0x4488ff}, {name:'MARKET', col:0x55ff55} ];
+        const planetMeshes = [], planetData = [], barRefs = [], incomingBarRefs = [], factoryRings = [];
+
+        const stars = new THREE.BufferGeometry(); const sp=[];
+        for(let i=0; i<12000; i++) sp.push((Math.random()-0.5)*600, (Math.random()-0.5)*400, (Math.random()-0.5)*600);
+        stars.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3));
+        scene.add(new THREE.Points(stars, new THREE.PointsMaterial({color:0x8899aa, size:0.3})));
+
+        function createMinerGeo() { return new THREE.IcosahedronGeometry(1.5, 1); }
+        function createFactoryGeo() { return new THREE.IcosahedronGeometry(1.5, 1); }
+        function createMarketGeo() { return new THREE.DodecahedronGeometry(1.5, 0); }
+
+        for(let i=0; i<12; i++) {
+            const type = i < 3 ? 0 : (i < 7 ? 1 : 2);
+            
+            const r = 18; 
+            const th = (i / 12) * Math.PI * 2;
+            const x = Math.cos(th) * r;
+            const z = Math.sin(th) * r;
+            let y = type === 0 ? -30 : (type === 1 ? 0 : 30);
+
+            let geo, mat;
+            mat = new THREE.MeshStandardMaterial({
+                color:TYPES[type].col, roughness:0.8, metalness:0.2, 
+                emissive:TYPES[type].col, emissiveIntensity:0.2, flatShading:true
+            });
+
+            if(type === 0) geo = createMinerGeo();
+            else if(type === 1) geo = createFactoryGeo();
+            else geo = createMarketGeo();
+
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(x, y, z); mesh.userData={id:i};
+            
+            if(type === 1) {
+                const ringGeoT = new THREE.TorusGeometry(2.2, 0.2, 8, 32);
+                const ringMat = new THREE.MeshStandardMaterial({color:0x88ccff, metalness:0.8, roughness:0.3, flatShading:true});
+                const ring = new THREE.Mesh(ringGeoT, ringMat);
+                ring.rotation.x = Math.PI/2;
+                mesh.add(ring);
+                factoryRings.push(ring);
+            }
+
+            const hitMesh = new THREE.Mesh(new THREE.SphereGeometry(3.5, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0, depthWrite: false }));
+            hitMesh.position.set(x, y, z); hitMesh.userData={id:i};
+            
+            const bar = new THREE.Mesh(new THREE.BoxGeometry(0.5,1,0.5), new THREE.MeshBasicMaterial({color:0xffffff}));
+            bar.geometry.translate(0,0.5,0); bar.position.y=1.8; mesh.add(bar); barRefs.push(bar);
+            const iBar = new THREE.Mesh(new THREE.BoxGeometry(0.5,1,0.5), new THREE.MeshBasicMaterial({color:0xffaa00, transparent:true, opacity:0.5}));
+            iBar.geometry.translate(0,0.5,0); iBar.position.y=1.8; mesh.add(iBar); incomingBarRefs.push(iBar);
+            
+            planetGroup.add(mesh); planetGroup.add(hitMesh);
+            planetMeshes.push(mesh); planetData.push({id:i, type, x, y, z});
+        }
+        
+        const pts = [];
+        planetData.forEach((target, targetIdx) => {
+            const supplierType = (target.type + 2) % 3; 
+            const candidates = [];
+            planetData.forEach((source, sourceIdx) => {
+                if (source.type === supplierType) {
+                    const dist = (target.x - source.x)**2 + (target.y - source.y)**2 + (target.z - source.z)**2;
+                    candidates.push({ p: source, dist: dist });
+                }
+            });
+            candidates.sort((a, b) => a.dist - b.dist);
+            candidates.slice(0, 3).forEach(c => {
+                pts.push(new THREE.Vector3(c.p.x, c.p.y, c.p.z));
+                pts.push(new THREE.Vector3(target.x, target.y, target.z));
+            });
+        });
+        scene.add(new THREE.LineSegments(
+            new THREE.BufferGeometry().setFromPoints(pts), 
+            new THREE.LineBasicMaterial({color:0x335577, opacity:0.15, transparent:true})
+        ));
+
+        const worker = new Worker(URL.createObjectURL(new Blob([document.getElementById('worker-code').textContent], {type:'text/javascript'})));
+        worker.postMessage({ type: 'INIT', data: { planets: planetData } });
+
+        const shipMeshes = new Map();
+        const shipLines = new Map(); 
+
+        function createScoutMesh() {
+            const group = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({color:0xaaaaaa, roughness:0.3, metalness:0.8, flatShading:true});
+            const engineMat = new THREE.MeshBasicMaterial({color:0x00ffff});
+            
+            const body = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.5, 6), bodyMat.clone());
+            body.name = 'indicator'; 
+            body.rotation.x = Math.PI/2;
+            group.add(body);
+            
+            const wingGeo = new THREE.BoxGeometry(1.2, 0.1, 0.5);
+            const wing = new THREE.Mesh(wingGeo, bodyMat);
+            wing.position.z = -0.3;
+            group.add(wing);
+            
+            const engine = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 8), engineMat);
+            engine.position.z = -0.8;
+            engine.scale.set(1, 0.5, 1);
+            group.add(engine);
+            return group;
+        }
+
+        function createHaulerMesh() {
+            const group = new THREE.Group();
+            const bodyMat = new THREE.MeshStandardMaterial({color:0x888888, roughness:0.7, metalness:0.4, flatShading:true});
+            const containerMat = new THREE.MeshStandardMaterial({color:0x444444, roughness:0.9, flatShading:true});
+            const engineMat = new THREE.MeshBasicMaterial({color:0xffaa00});
+            
+            const container = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.8), containerMat.clone());
+            container.name = 'indicator'; 
+            group.add(container);
+            
+            const engineGeo = new THREE.CylinderGeometry(0.3, 0.4, 1.5, 8);
+            const engL = new THREE.Mesh(engineGeo, bodyMat); engL.rotation.x=Math.PI/2; engL.position.set(-0.8,0,-0.2);
+            const engR = new THREE.Mesh(engineGeo, bodyMat); engR.rotation.x=Math.PI/2; engR.position.set(0.8,0,-0.2);
+            group.add(engL); group.add(engR);
+            
+            const glowGeo = new THREE.SphereGeometry(0.25, 8, 8);
+            const glowL = new THREE.Mesh(glowGeo, engineMat); glowL.position.set(-0.8,0,-1.0);
+            const glowR = new THREE.Mesh(glowGeo, engineMat); glowR.position.set(0.8,0,-1.0);
+            group.add(glowL); group.add(glowR);
+            return group;
+        }
+        
+        const uiCash=document.getElementById('ui-cash'), uiShips=document.getElementById('ui-ships'), uiUpkeep=document.getElementById('ui-upkeep'), uiProfit=document.getElementById('ui-profit');
+        const uiRank=document.getElementById('ui-rank'), uiXp=document.getElementById('ui-xp');
+        const uiMissionDesc=document.getElementById('mission-desc'), uiMissionCurr=document.getElementById('mission-curr'), uiMissionTgt=document.getElementById('mission-tgt');
+        const logEl=document.getElementById('log-display');
+        const costScout=document.getElementById('cost-scout'), costHauler=document.getElementById('cost-hauler');
+        const upkeepScout=document.getElementById('upkeep-scout'), upkeepHauler=document.getElementById('upkeep-hauler');
+        const btnBuy=document.getElementById('btn-buy-ship'), taxRateEl=document.getElementById('tax-rate');
+        const uiTimer = document.getElementById('ui-timer'), uiShipsText = document.getElementById('ui-ships-text');
+        
+        let selectedId = null;
+        let selectedType = 'scout';
+        let speed = 0; // START PAUSED
+
+        const ripples = [];
+        const ringGeo = new THREE.RingGeometry(1.8, 2.0, 32);
+        ringGeo.rotateX(-Math.PI/2); 
+
+        function spawnRipple(pos, color) {
+            const r = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({
+                color: color, transparent: true, opacity: 0.8, side: THREE.DoubleSide, blending: THREE.AdditiveBlending
+            }));
+            r.position.copy(pos);
+            r.userData = { life: 1.0, scale: 1.0 };
+            particleGroup.add(r);
+            ripples.push(r);
+        }
+
+        window.setShipType = (type) => {
+            selectedType = type;
+            document.querySelectorAll('.ship-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`sel-${type}`).classList.add('active');
+            worker.postMessage({ type: 'SET_SHIP_TYPE', data: type });
+        };
+        
+        window.ctrlAction = (action, kind) => {
+            if(selectedId !== null) worker.postMessage({type:'UPGRADE', data:{id:selectedId, kind:kind, action:action}});
+        };
+
+        let uiVisible = false; // START HIDDEN
+        
+        const btnToggleUi = document.getElementById('btn-toggle-ui');
+        btnToggleUi.onclick = () => {
+            uiVisible = !uiVisible;
+            document.querySelectorAll('.collapsible-ui').forEach(el => {
+                if(uiVisible) el.classList.remove('hud-hidden'); else el.classList.add('hud-hidden');
+            });
+            btnToggleUi.classList.toggle('active', !uiVisible);
+        };
+        
+        const btnSpeed = document.getElementById('btn-speed');
+        btnSpeed.onclick = () => {
+            if (speed === 1) {
+                speed = 3;
+                btnSpeed.textContent = "⏩"; 
+                btnSpeed.classList.add('active');
+                btnSpeed.classList.remove('paused');
+            } else if (speed === 3) {
+                speed = 0;
+                btnSpeed.textContent = "⏸️"; 
+                btnSpeed.classList.remove('active');
+                btnSpeed.classList.add('paused');
+            } else {
+                speed = 1;
+                btnSpeed.textContent = "▶️";
+                btnSpeed.classList.remove('active');
+                btnSpeed.classList.remove('paused');
+            }
+            worker.postMessage({ type: 'SET_SPEED', data: speed });
+        };
+
+        // --- TITLE SCREEN LOGIC ---
+        document.getElementById('btn-start-game').onclick = () => {
+            document.getElementById('title-screen').style.display = 'none';
+        };
+
+        worker.onmessage = (e) => {
+            const { type, state, text, time, cash, bonus } = e.data;
+            if(type === 'GAME_OVER') { 
+                document.getElementById('game-over').style.display = 'flex'; 
+                document.getElementById('final-time').textContent = `SURVIVED: ${window.formatTime(time)}`;
+                return; 
+            }
+            if(type === 'GAME_CLEAR') {
+                document.getElementById('game-clear').style.display = 'flex';
+                document.getElementById('clear-time').textContent = window.formatTime(time);
+                document.getElementById('clear-bonus').textContent = `+${bonus.toLocaleString()}`;
+                document.getElementById('clear-cash').textContent = cash.toLocaleString() + ' cr';
+                return;
+            }
+            if(type === 'LOG') { logEl.textContent=text; logEl.style.opacity=1; clearTimeout(logEl.t); logEl.t=setTimeout(()=>logEl.style.opacity=0.5,2000); }
+            
+            if(type === 'UPDATE') {
+                uiTimer.textContent = window.formatTime(state.time);
+                uiCash.textContent = state.cash.toLocaleString();
+                if(state.cash < 0) uiCash.className='cash-display cash-neg'; else uiCash.className='cash-display cash-pos';
+                
+                uiShips.textContent = state.ships.length;
+                uiShipsText.innerHTML = `Fleet: <span style="font-weight:bold">${state.ships.length}</span> (S:${state.counts.scout} / H:${state.counts.hauler})`;
+
+                uiUpkeep.textContent = state.upkeep.toLocaleString();
+                uiProfit.textContent = (state.net >= 0 ? "+" : "") + state.net + " /s";
+                uiProfit.className = "profit-rate " + (state.net >= 0 ? "rate-pos" : "rate-neg");
+                
+                uiRank.textContent = state.rankData.title;
+                const xpPct = (state.rankData.xp / state.rankData.xpToNext) * 100;
+                uiXp.style.width = `${Math.min(100, xpPct)}%`;
+
+                if (state.prices && state.taxInfo) {
+                    costScout.textContent = state.prices.scout.toLocaleString() + "cr";
+                    costHauler.textContent = state.prices.hauler.toLocaleString() + "cr";
+                    costScout.className = state.cash >= state.prices.scout ? "ship-cost-label cost-ok" : "ship-cost-label cost-ng";
+                    costHauler.className = state.cash >= state.prices.hauler ? "ship-cost-label cost-ok" : "ship-cost-label cost-ng";
+                    
+                    upkeepScout.textContent = `-${state.taxInfo.scoutUpkeep}/s`;
+                    upkeepHauler.textContent = `-${state.taxInfo.haulerUpkeep}/s`;
+                    taxRateEl.textContent = `+${state.taxInfo.rate}%`;
+
+                    const targetPrice = selectedType === 'scout' ? state.prices.scout : state.prices.hauler;
+                    if(state.cash < targetPrice) {
+                        btnBuy.disabled = true; btnBuy.textContent = "Insufficient Funds";
+                    } else {
+                        btnBuy.disabled = false; btnBuy.textContent = "DEPLOY SHIP";
+                    }
+                }
+                
+                if (state.mission) {
+                    uiMissionDesc.textContent = state.mission.desc;
+                    uiMissionCurr.textContent = Math.floor(state.mission.progress);
+                    uiMissionTgt.textContent = state.mission.target;
+                    if(state.mission.progress >= state.mission.target) document.getElementById('mission-panel').classList.add('mission-complete');
+                    else document.getElementById('mission-panel').classList.remove('mission-complete');
+                }
+
+                if (state.taxInfo.upgradeUpkeep) {
+                    const previewProd = document.getElementById('preview-prod-upkeep');
+                    const previewCap = document.getElementById('preview-cap-upkeep');
+                    if(previewProd) previewProd.textContent = `OpEx: +${state.taxInfo.upgradeUpkeep}/s`;
+                    if(previewCap) previewCap.textContent = `OpEx: +${state.taxInfo.upgradeUpkeep}/s`;
+                }
+
+                if(state.events) state.events.forEach(ev => {
+                    if (ev.type === 'ripple') {
+                        spawnRipple(planetMeshes[ev.pid].position, ev.color);
+                    } else if (ev.type !== 'particle') { 
+                        let txt = ev.type==='earn' ? `+${ev.amt}` : `-${ev.amt}`;
+                        spawnPopup(ev.pid, txt, ev.type==='loss');
+                    }
+                });
+
+                state.planets.forEach((p,i)=>{
+                    const bar=barRefs[i]; 
+                    const hStock = Math.max(0.01, (p.stock/p.max)*4);
+                    bar.scale.y = hStock;
+                    bar.material.color.setHex(p.stock>=p.max*0.95 ? 0xff0000 : 0xffffff);
+                    const hIncoming = (p.incoming/p.max)*4;
+                    const iBar = incomingBarRefs[i];
+                    if (hIncoming > 0.01) {
+                        iBar.visible = true; iBar.scale.y = hIncoming; iBar.position.y = 1.8 + hStock;
+                    } else { iBar.visible = false; }
+                    
+                    if(selectedId===p.id) {
+                        document.getElementById('p-stock').textContent=Math.floor(p.stock); 
+                        document.getElementById('p-incoming').textContent = p.incoming > 0 ? `(+${Math.floor(p.incoming)})` : "";
+                        document.getElementById('p-max').textContent=p.max;
+                        document.getElementById('p-rate').textContent = p.rate.toFixed(1);
+                        document.getElementById('p-trait').textContent = p.trait.name;
+                        document.getElementById('p-trait').style.display = 'inline-block';
+                        
+                        const c = p.trait.color ? p.trait.color.toString(16) : 'ffffff';
+                        document.getElementById('p-trait').style.backgroundColor = '#' + c;
+                        
+                        document.getElementById('p-desc').textContent = p.trait.desc;
+                        document.getElementById('p-prod-lvl').textContent = p.prodLvl;
+                        document.getElementById('p-cap-lvl').textContent = p.capLvl;
+                        
+                        document.getElementById('cost-prod').textContent = p.nextProd + "cr";
+                        document.getElementById('cost-cap').textContent = p.nextCap + "cr";
+                        
+                        document.getElementById('btn-up-prod').disabled = state.cash < p.nextProd;
+                        document.getElementById('btn-up-cap').disabled = state.cash < p.nextCap;
+                        
+                        document.getElementById('btn-down-prod').disabled = p.prodLvl <= 1;
+                        document.getElementById('btn-down-cap').disabled = p.capLvl <= 1;
+                        
+                        document.getElementById('p-upkeep-val').textContent = `-${p.planetUpkeep.toFixed(1)}/s`;
+                    }
+                });
+
+                state.ships.forEach((s, idx) => {
+                    // Mesh Logic
+                    let m = shipMeshes.get(s.id); 
+                    if(!m){ 
+                        m = s.type === 'scout' ? createScoutMesh() : createHaulerMesh();
+                        shipGroup.add(m); shipMeshes.set(s.id,m); 
+                    }
+                    m.visible = true;
+                    
+                    const indicator = m.getObjectByName('indicator');
+                    if (indicator) {
+                        const isLoaded = s.cargo > 0;
+                        const loadedColor = s.type === 'scout' ? 0x00ffff : 0xffaa00; // Cyan / Orange
+                        const emptyColor = 0x444444; // Dark Grey
+                        
+                        indicator.material.color.setHex(isLoaded ? loadedColor : emptyColor);
+                        indicator.material.emissive.setHex(isLoaded ? loadedColor : 0x000000);
+                        indicator.material.emissiveIntensity = isLoaded ? 0.5 : 0;
+                    }
+
+                    if (s.dest !== null) {
+                        if (!shipLines.has(s.id)) {
+                            const startPos = planetMeshes[s.curr].position;
+                            const endPos = planetMeshes[s.dest].position;
+                            const points = [startPos, endPos];
+                            const geo = new THREE.BufferGeometry().setFromPoints(points);
+                            const mat = new THREE.LineBasicMaterial({ 
+                                color: s.type==='scout' ? 0x00ffff : 0xffaa00, 
+                                transparent: true, opacity: 0.1 
+                            });
+                            const line = new THREE.Line(geo, mat);
+                            lineGroup.add(line);
+                            shipLines.set(s.id, line);
+                        }
+                    } else {
+                        if (shipLines.has(s.id)) {
+                            const line = shipLines.get(s.id);
+                            lineGroup.remove(line);
+                            line.geometry.dispose();
+                            line.material.dispose();
+                            shipLines.delete(s.id);
+                        }
+                    }
+
+                    if(s.dest!==null) {
+                        m.position.lerpVectors(planetMeshes[s.curr].position, planetMeshes[s.dest].position, s.progress); 
+                        m.lookAt(planetMeshes[s.dest].position);
+                    } else {
+                        const pPos = planetMeshes[s.curr].position;
+                        if (s.status === 'WAITING') {
+                            const time = Date.now() * 0.002; const radius = 3.5 + (idx%3)*0.8; const offset = idx * 1.0; 
+                            m.position.x = pPos.x + Math.cos(time + offset) * radius;
+                            m.position.z = pPos.z + Math.sin(time + offset) * radius;
+                            m.position.y = pPos.y; m.lookAt(pPos); 
+                        } else {
+                            m.position.copy(pPos);
+                            m.position.y += 4.0 + Math.sin(Date.now()*0.005 + idx)*0.3; m.rotation.y += 0.05;
+                        }
+                    }
+                });
+                
+                if (shipMeshes.size > state.ships.length) {
+                    const activeIds = new Set(state.ships.map(s=>s.id));
+                    for (let [id, mesh] of shipMeshes) { 
+                        if(!activeIds.has(id)) { 
+                            shipGroup.remove(mesh); shipMeshes.delete(id); 
+                            if (shipLines.has(id)) {
+                                const l = shipLines.get(id);
+                                lineGroup.remove(l); l.geometry.dispose(); l.material.dispose();
+                                shipLines.delete(id);
+                            }
+                        } 
+                    }
+                }
+            }
+        };
+
+        const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+        let isDrag=false, downPos={x:0,y:0};
+        window.addEventListener('pointerdown', e=>{isDrag=false; downPos={x:e.clientX, y:e.clientY};});
+        window.addEventListener('pointermove', e=>{if(Math.abs(e.clientX-downPos.x)>5||Math.abs(e.clientY-downPos.y)>5)isDrag=true;});
+        window.addEventListener('pointerup', e=>{
+            if(isDrag||e.target.closest('button')||e.target.closest('.hud-panel'))return;
+            mouse.x=(e.clientX/window.innerWidth)*2-1; mouse.y=-(e.clientY/window.innerHeight)*2+1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects=raycaster.intersectObjects(planetGroup.children, true);
+            if(intersects.length>0) {
+                let t = intersects[0].object; 
+                while(t && t.userData.id === undefined) { t = t.parent; }
+                if(t && t.userData.id !== undefined) selectPlanet(t.userData.id);
+            } else deselect();
+        });
+
+        window.deselect=()=>{selectedId=null; document.getElementById('detail-panel').style.display='none'; selectionMesh.visible=false;};
+        function selectPlanet(id) {
+            selectedId=id; const p=planetData[id];
+            selectionMesh.visible=true; selectionMesh.position.copy(planetMeshes[id].position);
+            document.getElementById('p-type').textContent=TYPES[p.type].name;
+            document.getElementById('p-type').style.color='#'+TYPES[p.type].col.toString(16).padStart(6,'0');
+            document.getElementById('detail-panel').style.display='flex';
+        }
+        function spawnPopup(pid, t, isLoss) {
+            const p=planetMeshes[pid].position.clone(); p.y+=2.5; p.project(camera);
+            const x=(p.x*0.5+0.5)*window.innerWidth, y=(-(p.y*0.5)+0.5)*window.innerHeight;
+            if(x<0||x>window.innerWidth||y<0||y>window.innerHeight)return;
+            const el=document.createElement('div'); el.className='floating-text ' + (isLoss?'float-loss':'float-gain');
+            el.textContent=t; el.style.left=x+'px'; el.style.top=y+'px';
+            document.body.appendChild(el); setTimeout(()=>el.remove(),2000);
+        }
+
+        document.getElementById('btn-buy-ship').onclick=()=>worker.postMessage({type:'BUY_SHIP'});
+        document.getElementById('btn-sell-ship').onclick=()=>worker.postMessage({type:'SELL_SHIP'});
+        // document.getElementById('btn-up-prod').onclick=()=>{if(selectedId!==null)worker.postMessage({type:'UPGRADE',data:{id:selectedId,kind:'prod'}});};
+        // document.getElementById('btn-up-cap').onclick=()=>{if(selectedId!==null)worker.postMessage({type:'UPGRADE',data:{id:selectedId,kind:'cap'}});};
+
+        function animate() { 
+            requestAnimationFrame(animate); 
+            controls.update(); 
+            worker.postMessage({type:'TICK'}); 
+            if(selectionMesh.visible)selectionMesh.rotation.z-=0.02; 
+            
+            // Animate Factory Rings
+            factoryRings.forEach(ring => { ring.rotation.z += 0.005; });
+
+            for(let i=ripples.length-1; i>=0; i--) {
+                const r = ripples[i];
+                r.userData.life -= 0.005; 
+                r.userData.scale += 0.02; 
+                r.scale.setScalar(r.userData.scale);
+                r.material.opacity = r.userData.life * 0.8;
+                if(r.userData.life <= 0) { particleGroup.remove(r); ripples.splice(i,1); }
+            }
+            renderer.render(scene, camera); 
+        }
+        window.onresize=()=>{camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight);};
+        animate();
+    </script>
+</body>
+</html>
