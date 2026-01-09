@@ -61,7 +61,6 @@ cd orbit-chain
 ## 📂 Directory Structure
 ```
 orbit-chain/
-│
 ├── index.html      # Complete source code (Logic, Styles, 3D Rendering)
 ├── README.md       # Project documentation
 └── LICENSE         # License file
